@@ -84,7 +84,7 @@ We also restrain the `Phyto` dataset with the selected variables.
 Phyto <- Phyto %>% select(colnames(Phyto_prop) )
 ```
 
-## 2) Normalization of all variables with
+## 2) Normalization of all variables
 
 The normalization of each environmental and MFGs variable $x$ is performed by applying the formula: $$ x - \frac{\mu_x}{\sigma_x}$$ with $\mu_x$ the zero mean value of $x$ and $\sigma_x$ the standard deviation of 1.
 

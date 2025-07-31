@@ -3253,7 +3253,7 @@ window.Quarto = {
    
   <ul>
   <li><a href="#formating-the-environmental-and-phytoplantonic-dataset" id="toc-formating-the-environmental-and-phytoplantonic-dataset" class="nav-link active" data-scroll-target="#formating-the-environmental-and-phytoplantonic-dataset">1) Formating the environmental and phytoplantonic dataset</a></li>
-  <li><a href="#normalization-of-all-variables-with" id="toc-normalization-of-all-variables-with" class="nav-link" data-scroll-target="#normalization-of-all-variables-with">2) Normalization of all variables with</a></li>
+  <li><a href="#normalization-of-all-variables" id="toc-normalization-of-all-variables" class="nav-link" data-scroll-target="#normalization-of-all-variables">2) Normalization of all variables</a></li>
   </ul>
 </nav>
 </div>
@@ -3296,7 +3296,7 @@ window.Quarto = {
    
   <ul>
   <li><a href="#formating-the-environmental-and-phytoplantonic-dataset" id="toc-formating-the-environmental-and-phytoplantonic-dataset">1) Formating the environmental and phytoplantonic dataset</a></li>
-  <li><a href="#normalization-of-all-variables-with" id="toc-normalization-of-all-variables-with">2) Normalization of all variables with</a></li>
+  <li><a href="#normalization-of-all-variables" id="toc-normalization-of-all-variables">2) Normalization of all variables</a></li>
   </ul>
 </nav>
 <p>Load the required libraries</p>
@@ -3352,8 +3352,8 @@ window.Quarto = {
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>Phyto <span class="ot">&lt;-</span> Phyto <span class="sc">%&gt;%</span> <span class="fu">select</span>(<span class="fu">colnames</span>(Phyto_prop) )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
-<section id="normalization-of-all-variables-with" class="level2">
-<h2 class="anchored" data-anchor-id="normalization-of-all-variables-with">2) Normalization of all variables with</h2>
+<section id="normalization-of-all-variables" class="level2">
+<h2 class="anchored" data-anchor-id="normalization-of-all-variables">2) Normalization of all variables</h2>
 <p>The normalization of each environmental and MFGs variable <span class="math inline">\(x\)</span> is performed by applying the formula: <span class="math display">\[ x - \frac{\mu_x}{\sigma_x}\]</span> with <span class="math inline">\(\mu_x\)</span> the zero mean value of <span class="math inline">\(x\)</span> and <span class="math inline">\(\sigma_x\)</span> the standard deviation of 1.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>normalize <span class="ot">&lt;-</span> <span class="cf">function</span>(x, ...) {(x <span class="sc">-</span> <span class="fu">mean</span>(x, <span class="at">na.rm=</span>T))<span class="sc">/</span><span class="fu">sd</span>(x, <span class="at">na.rm=</span>T)} </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
