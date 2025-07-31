@@ -1,1 +1,1 @@
-# 2025_rEDM_Rimov-mfg
+# 2025_rEDM_Rimov-Phytoplankton-MFGs
