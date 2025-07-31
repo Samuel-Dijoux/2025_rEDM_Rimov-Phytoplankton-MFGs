@@ -21,10 +21,8 @@ execute:
 Load the required libraries
 
 ```{r, warning=FALSE}
-
-library(datetimeutils) # convertion of date/time between R Excel
-#library(dplyr)
-library(readxl) # to read excel file
+library(datetimeutils)
+library(readxl)
 library(tidyverse)
 ```
 
@@ -108,7 +106,7 @@ We reconstitute the Rimov dataset together, with the normalized variables.
 Rimov_std <- cbind.data.frame(Sampling, Phyto_std, Env_std)
 ```
 
-## Saving the *.RData* of all datasets and functions
+Saving the different datasets as *.RData*
 
 ```{r}
 save.image("Data/Rimov.datasets.RData")
