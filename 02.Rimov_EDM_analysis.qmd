@@ -1,0 +1,204 @@
+---
+title: "02.Rimov_EDM_analysis"
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-title: Contents
+    toc-location: left-body
+    embed-resources: true
+    self-contained-math: true
+date: today
+date-format: long
+editor: visual
+author: Samuel Dijoux
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Introduction
+
+### Short overview
+
+This script is dedicated to the empirical dynamical modelling analyses performed on the time series of morpho-functional groups of phytoplanktonic communities sampled in the Řimov reservoir (Czech Republic) between 1997 and 2021.
+
+Each variable is sub
+
+### Required materials
+
+#### Libraries
+
+Load the required packages (if these are not installed on your system, use `install.packages()`)
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(purrr)
+library(dplyr)
+library(tibble)
+library(readr)
+library(stringr)
+library(lubridate)
+library(forcats)
+library(fields)
+
+library(rEDM)
+library(ncdf4)
+library(quantreg)
+library(RANN)
+library(ggsci)
+library(here)
+
+library(ggplot2)
+library(plot3D)
+library(igraph)
+library(gridExtra)
+```
+
+#### Plot theme
+
+The following chunk defines the plot theme used across the analyses
+
+```{r}
+plot_theme <-   theme_minimal()+
+  theme(text=element_text(family="sans",size=12,color="black"),
+        legend.text = element_text(size=14),
+        axis.title=element_text(family="sans",size=14),
+        axis.text=element_text(family="sans",size=8),
+        strip.background = element_rect(colour="black"),
+        panel.border = element_rect(color="black",fill=NA))
+
+theme_set(plot_theme)
+```
+
+#### Rimov dataset
+
+```{r}
+load("Data/Rimov.datasets.RData")
+```
+
+## Variables in the dataset
+
+-   Description of the phytoplanktonic Morpho-Functional Groups (*MFGs*) variables
+
+```{r}
+tibble(Variable=colnames(Phyto_std),
+       Description = c(paste0("Normalized biomass of MFG ", substr(colnames(Phyto_std), 5,  6) ) )) %>% knitr::kable()
+```
+
+-   Description of the environmental variables
+
+```{r}
+tibble(Variable=colnames(Env_std),
+       Description = paste0("Normalized ", c(
+  "Dissolved oxygen", "pH", "Conductometry", "Dissolved organic carbon",
+  "Total Phosphorus concentration", "Total Nitrogen concentration",
+  "Dissolved inorganic nitrogen", "Altitude of the water surface (m.a.s.l)", "Temperature" ) )) %>% knitr::kable()
+```
+
+## Establishing univariate predictability and nonlinearity
+
+### Simplex projection and Embedding dimensions
+
+we use Nearest neighbor forecasting method (Simplex) to determine the optimal embedding dimensions $E$ to produce forecasts for each MFG variables. This is done by selecting the $E$ for which we observe the highest forecast skill $\rho$.
+
+```{r}
+Rimov.phyto.simplex.list <- list()
+for(i in 1:length(vars)){
+  ts <- Phyto_std[[vars[i]]]
+  Rimov.phyto.simplex.list[[i]] <- simplex(ts, lib=c(1, floor(dim(Phyto_std)[1]/2) ),
+                              pred=c(floor(dim(Phyto_std)[1]/2)+1, dim(Phyto_std)[1]), silent=TRUE )
+}
+names(Rimov.phyto.simplex.list) <- vars
+```
+
+```{r}
+par(mfrow = c(2, 2))
+for (var in names(Rimov.phyto.simplex.list)) {
+    plot(Rimov.phyto.simplex.list[[var]]$E, Rimov.phyto.simplex.list[[var]]$rho, type = "l", xlab = "Embedding Dimension (E)", 
+        ylab = expression(paste("Skill, ",rho)), main = var)
+}
+
+# bind_rows(Rimov.phyto.simplex.list) %>%
+#   ggplot(aes(E,rho))+
+#   geom_line(size=2)+
+#   #facet_wrap(nrow=2,scales="free_y")+
+#   labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
+#   scale_x_continuous(breaks=seq(0,12,by=2))
+  
+```
+
+```{r}
+# bind_rows(westend.simp.list) %>%
+#   ggplot(aes(E,rho,color=spp))+
+#   geom_line(size=2)+
+#   facet_wrap(~spp,nrow=2,scales="free_y")+
+#   labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
+#   scale_x_continuous(breaks=seq(0,12,by=2))+
+#   scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
+#   guides(color=F)
+```
+
+We saves the best dimension
+
+```{r}
+rimov.best_E <- sapply(Rimov.phyto.simplex.list, function(df) {
+    df$E[which.max(df$rho)]
+})
+rimov.best_E
+```
+
+### S-maps of each species to identify nonlinear/linear time series
+
+Using the optimal embedding dimensions previously analysed, we apply the S-map method to identify whether the variables follow a linear dynamic (if the highest predictive skill $\rho$ occurs for $\theta = 0$) or a nonlinear dynamic (higher $\rho$ observed for $\theta > 0$).
+
+```{r}
+rimov.phyto.smaps <- lapply(vars, function(var) {
+    s_map(Phyto_std[[var]], E = rimov.best_E[var],
+          lib=c(1, floor(dim(Phyto_std)[1]/2) ),
+                              pred=c(floor(dim(Phyto_std)[1]/2)+1, dim(Phyto_std)[1])
+          )
+})
+names(rimov.phyto.smaps) <- names(Rimov.phyto.simplex.list)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+for (var in names(rimov.phyto.smaps)) {
+    plot(rimov.phyto.smaps[[var]]$theta,
+         rimov.phyto.smaps[[var]]$rho, type = "l", xlab = "Nonlinearity (theta)", 
+        ylab = "Forecast Skill (rho)", main = var)
+}
+```
+
+## Convergent Cross Mapping
+
+```{r}
+n <- NROW(Phyto_std)
+ccm_rho_matrix2 <- matrix(NA, nrow = length(vars), ncol = length(vars), dimnames = list(vars, 
+    vars))
+
+e = 1
+for (ccm_from in vars) {
+    for (ccm_to in vars[vars != ccm_from]) {
+        out_temp <- ccm(Phyto_std, E = rimov.best_E[[e]], lib_column = ccm_from, target_column = ccm_to, 
+            lib_sizes = n, replace = FALSE, silent = TRUE)
+        ccm_rho_matrix2[ccm_from, ccm_to] <- out_temp$rho
+    }
+  e = e+1
+}
+
+ccm_rho_matrix2
+```
+
+## Acknowledgement
+
+The analyses made below, were possible Two essential hat tips have to be made for the production of these analyses:
+
+-   The rEDM tutorial
+
+-   Empirical dynamic dynamic modelling analyses by Owen Liu. <file:///C:/Users/sdijoux/Dropbox/%23%2000.%20Research/Research%20projects/_2024_TS-Rimov/Analysis/env_context_dependency/edm_analysis.html#3_convergent_cross_mapping>
