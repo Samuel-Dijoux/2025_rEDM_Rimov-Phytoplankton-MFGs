@@ -1,0 +1,115 @@
+---
+title: "Data formating from the Řimov reservoir"
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-title: Contents
+    toc-location: left-body
+    embed-resources: true
+    self-contained-math: true
+date: today
+date-format: long
+editor: visual
+author: Samuel Dijoux
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+Load the required libraries
+
+```{r, warning=FALSE}
+
+library(datetimeutils) # convertion of date/time between R Excel
+#library(dplyr)
+library(readxl) # to read excel file
+library(tidyverse)
+```
+
+## 1) Formating the environmental and phytoplantonic dataset
+
+The Rimov dataset is composed of 5 variables related to the sampling period, 28 variables related to the Morpho-Functional Groups of phytoplankton, 6 variables size-class related to zooplankton (4 for cladocerans and 2 for copepods), and 18 physico-chemical variables related to the environmental data.
+
+```{r}
+Rimov <- readxl::read_excel("Data/TS_Rimov_data.xlsx", col_names=TRUE, na='NA', col_types=c("date", rep("numeric", 54)) );
+
+# Record the date month of sampling and add the year phase (qualified below)
+Rimov <- Rimov %>% #filter(Year > 1999 & Year < 2021) %>% 
+  mutate(Month = as.numeric(format(Date, "%m")),
+         Phase = rep(0, length = dim(Rimov)[1])) %>%
+  relocate("Month", "Phase", .before = Sampling)
+
+# The distinct Periods of the Reservoir (source: Znchor et al. (2020) Sci. Tot. Env)
+Rimov[which(Rimov$Year < 1990),]$Phase <- 1 # for years within the period 1983-1989
+Rimov[which(Rimov$Year > 1989),]$Phase <- 2 # for years within the period  1990-1998
+Rimov[which(Rimov$Year > 1999),]$Phase <- 3 # for years within the period  2000-2014
+Rimov[which(Rimov$Year == 1999),]$Phase <- NA # Uncategorized year (1999)
+
+Rimov <- Rimov %>% drop_na()
+```
+
+For simplicity we separate each dataset and focus only on the variables related to the environment and the phytoplankton MGFs.
+
+```{r}
+Sampling <- Rimov[,c(1:5)] %>% as.data.frame()
+Env <- Rimov[,c(40:57)] %>% as.data.frame()
+```
+
+We restrain the number of environmental variables to kept those of most interest.
+
+```{r}
+Env <- Env %>% select(DO, pH, Conduct, DOC, TP, TN, DIN, "Surf-alti", Temp) 
+```
+
+We also calculate the total biovolume of phytoplankton sampled at a given time.
+
+```{r}
+Phyto <- Rimov %>% 
+  mutate(Phyto_BV = apply(select(.,starts_with("MFG")), 1, sum)) %>%
+  select(starts_with("MFG"), Phyto_BV)
+```
+
+We then calculate the relative proportion of each MFGs at any given time. Due to the amount of MFG variables, we filter the dataset to only keep MFGs which represent $2.5 \%$ of the phytoplankton biovolume in average over the time period.
+
+```{r}
+Phyto_prop <- Phyto %>%
+  mutate_at(.vars=vars(matches("MFG")),~unlist(list((./Phyto_BV) ))) %>%
+  select_if(.vars=vars(matches("MFG")), ~unlist(list( mean(., na.rm=T) > 0.025)) ) %>%
+  select(-Phyto_BV)
+```
+
+We also restrain the `Phyto` dataset with the selected variables.
+
+```{r}
+Phyto <- Phyto %>% select(colnames(Phyto_prop) )
+```
+
+## 2) Normalization of all variables with
+
+The normalization of each environmental and MFGs variable $x$ is performed by applying the formula: $$ x - \frac{\mu_x}{\sigma_x}$$ with $\mu_x$ the zero mean value of $x$ and $\sigma_x$ the standard deviation of 1.
+
+```{r}
+normalize <- function(x, ...) {(x - mean(x, na.rm=T))/sd(x, na.rm=T)} 
+```
+
+The normalization function applied to each dataset:
+
+```{r}
+Env_std <- Env %>% mutate_all(.funs = normalize)
+Phyto_std <- Phyto %>% mutate_all(.funs = normalize)
+Phyto_prop_std <- Phyto_prop %>% mutate_all(.funs = normalize)
+```
+
+We reconstitute the Rimov dataset together, with the normalized variables.
+
+```{r}
+Rimov_std <- cbind.data.frame(Sampling, Phyto_std, Env_std)
+```
+
+## Saving the *.RData* of all datasets and functions
+
+```{r}
+save.image("Data/Rimov.datasets.RData")
+```
