@@ -18,21 +18,22 @@ execute:
   message: false
 ---
 
-## Introduction
+# Introduction
 
-### Short overview
+This script is dedicated to the empirical dynamical modelling analyses performed on time series of different morpho-functional groups of phytoplanktonic communities sampled in the Řimov reservoir (Czech Republic) between 1997 and 2021. We aim to address the question of how the different morpho-functional phytoplanktonic groups interact with one another regarding the fluctuating physical and chemical changes in the Rimov reservoir across the time period. 
 
-This script is dedicated to the empirical dynamical modelling analyses performed on the time series of morpho-functional groups of phytoplanktonic communities sampled in the Řimov reservoir (Czech Republic) between 1997 and 2021.
+This document follows similar steps performed by *Liu and Gaines (2022). Environmental context dependency in species interactions* (PNAS), available here:
 
-Each variable is sub
+-   Paper <https://www.pnas.org/doi/abs/10.1073/pnas.2118539119?af=R>
 
-### Required materials
+-   Analysis <https://github.com/owenrliu/env_context_dependency>.
 
-#### Libraries
 
-Load the required packages (if these are not installed on your system, use `install.packages()`)
+## Set up
 
-```{r, warning=FALSE, message=FALSE}
+Here is the state of the system with the different packages used. Load the required packages (if these are not installed on your system, use `install.packages()`)
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
 library(tidyverse)
 library(tidyr)
 library(knitr)
@@ -46,7 +47,9 @@ library(lubridate)
 library(forcats)
 library(fields)
 
+#devtools::install_github("ha0ye/rEDM")
 library(rEDM)
+
 library(ncdf4)
 library(quantreg)
 library(RANN)
@@ -57,9 +60,15 @@ library(ggplot2)
 library(plot3D)
 library(igraph)
 library(gridExtra)
+
+library(RColorBrewer)
 ```
 
-#### Plot theme
+```{r, echo=FALSE}
+print(sessionInfo())
+```
+
+### Plot theme
 
 The following chunk defines the plot theme used across the analyses
 
@@ -75,22 +84,56 @@ plot_theme <-   theme_minimal()+
 theme_set(plot_theme)
 ```
 
-#### Rimov dataset
+# Description of the Rimov reservoir and studied Variables
 
-```{r}
+Brief state of art of the Rimov reservoir (missin for now, to be added).
+
+```{r, echo=FALSE}
 load("Data/Rimov.datasets.RData")
 ```
 
-## Variables in the dataset
+```{r, echo=FALSE}
+key.table <- tibble(dataset=c(rep("MFG Biovolume", 11),rep("Environment",9)),
+                  short=c( names(Phyto), names(Env)),
+                  long = c( paste0("MFG ", substr(colnames(Phyto_std), 5, 6)),
+                           "Dissolved oxygen", "pH", "Conductometry", "Dissolved organic carbon",
+                           "Total Phosphorus concentration", "Total Nitrogen concentration",
+                           "Dissolved inorganic nitrogen", "Altitude of the water surface (m.a.s.l)", "Temperature"),
+                  col = c( brewer.pal(11, 'RdYlBu'), brewer.pal(9, 'Paired')))
+key.table$col[6] <- rgb(0,0,0)
+```
 
--   Description of the phytoplanktonic Morpho-Functional Groups (*MFGs*) variables
+```{r, warning=FALSE, echo=FALSE}
+pd <- position_dodge(width=2)
+variables <- c( names(Phyto), names(Env))
+
+ts_list <- list()
+for(i in 1:length(variables)){
+  yname <- ifelse(i<=11,
+                  paste0("Normalized Biovolume of MFG ", substr(variables[i], 5, 6)),
+                  paste0("Normalized Index Value of ", variables[i]))
+  
+  data <- Rimov_std %>% select(Date, variables[i])
+  colnames(data)[2] <- 'value'
+  
+  pp <- data %>%
+    ggplot(aes(x=Date, y = value))+
+    geom_hline(yintercept=0, lty=2)+
+    geom_line(lwd=1, alpha=0.8, size=0.3, color = key.table[i,]$col)+
+    xlab("Year")+ylab(yname)
+  
+  ts_list[[i]] = pp
+}
+```
+
+Our dataset is composed of 11 morpho-functional groups (MFGs) of phytoplankton and up to 9 environmental variables, all processed in the same time period. The 11 selected MFGs were selected as they contributed to at least $2.5 \%$ to the total phytoplanktonic biovolume in average over the time period.
+
+To perform empirical dynamic models, it is best to create normalized time series in order to not distort the state-space reconstruction due to differences in magnitudes between variables. For this, we thus normalized our data using a zero mean and standard deviation of 1. See the script `01. Rimov_data_format` for more details and codes.  
 
 ```{r}
 tibble(Variable=colnames(Phyto_std),
        Description = c(paste0("Normalized biomass of MFG ", substr(colnames(Phyto_std), 5,  6) ) )) %>% knitr::kable()
 ```
-
--   Description of the environmental variables
 
 ```{r}
 tibble(Variable=colnames(Env_std),
@@ -100,82 +143,222 @@ tibble(Variable=colnames(Env_std),
   "Dissolved inorganic nitrogen", "Altitude of the water surface (m.a.s.l)", "Temperature" ) )) %>% knitr::kable()
 ```
 
-## Establishing univariate predictability and nonlinearity
 
-### Simplex projection and Embedding dimensions
 
-we use Nearest neighbor forecasting method (Simplex) to determine the optimal embedding dimensions $E$ to produce forecasts for each MFG variables. This is done by selecting the $E$ for which we observe the highest forecast skill $\rho$.
+-     Morpho functional groups
 
-```{r}
-Rimov.phyto.simplex.list <- list()
-for(i in 1:length(vars)){
-  ts <- Phyto_std[[vars[i]]]
-  Rimov.phyto.simplex.list[[i]] <- simplex(ts, lib=c(1, floor(dim(Phyto_std)[1]/2) ),
-                              pred=c(floor(dim(Phyto_std)[1]/2)+1, dim(Phyto_std)[1]), silent=TRUE )
+```{r, echo=FALSE}
+for(i in 1:11){
+  print(ts_list[[i]])
 }
-names(Rimov.phyto.simplex.list) <- vars
 ```
 
-```{r}
-par(mfrow = c(2, 2))
-for (var in names(Rimov.phyto.simplex.list)) {
-    plot(Rimov.phyto.simplex.list[[var]]$E, Rimov.phyto.simplex.list[[var]]$rho, type = "l", xlab = "Embedding Dimension (E)", 
-        ylab = expression(paste("Skill, ",rho)), main = var)
-}
+-     Environmental variables
 
-# bind_rows(Rimov.phyto.simplex.list) %>%
-#   ggplot(aes(E,rho))+
-#   geom_line(size=2)+
-#   #facet_wrap(nrow=2,scales="free_y")+
-#   labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
-#   scale_x_continuous(breaks=seq(0,12,by=2))
+```{r, echo=FALSE}
+for(i in 12:20){
+  print(ts_list[[i]])
+}
+```
+
+# Univariate analysis
+
+Our goal by using the EDM technique is to reconstruct the behaviour of dynamic state of the system from our time series.
+For this we need to check that our time series are valid
+
+We need to verify that each of our time series are properly embedded
+and are non-linear
+For this, we will use lags of each single time series
+Instead of using a complete set of state variables to represent the system, 
+
+Each time series can
+
+Multiple preliminary steps are required before being able to
+
+Simplex projection
+
+
+Before testing the different causal interactions between variables, we need to run a few preliminary steps in order to reconstruct 
+
+We need evidence that the variables are
+
+-   the optimal lag (or embedding dimension) which unfold the best the time series
+
+-   their ability to self predict, i.e by detecting whether the time series is stochastic or not (notably by testing whether the variables have a chaotic pattern or not)
+
+-   the variable is non linear
+
+## Simplex, to identify Optimal embedding dimensions
+
+we use Nearest neighbor forecasting method (Simplex) 
+
+We start by identifying the optimal embedded dimension $E$ that best unfold the dynamics of each variables. This is assessed by selecting the embedded dimension for which we observe the highest prediction skill $\rho$.
+
+```{r, echo=FALSE}
+Rimov.Edim.list <- list(); j=1
+for(i in 6:dim(Rimov_std)[2]){
+  out <- EmbedDimension(dataFrame=Rimov_std, 
+                        lib=c(1, floor(dim(Rimov_std)[1]/2) ),
+                        pred=c(floor(dim(Rimov_std)[1]/2)+1, dim(Rimov_std)[1]),
+                        columns = colnames(Rimov_std)[i], target = colnames(Rimov_std)[i], showPlot=F) %>% 
+    mutate(ID = key.table$long[match(colnames(Rimov_std)[i],key.table$short)])
+  Rimov.Edim.list[[j]] <- out; j <- j+1
   
-```
-
-```{r}
-# bind_rows(westend.simp.list) %>%
-#   ggplot(aes(E,rho,color=spp))+
-#   geom_line(size=2)+
-#   facet_wrap(~spp,nrow=2,scales="free_y")+
-#   labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
-#   scale_x_continuous(breaks=seq(0,12,by=2))+
-#   scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
-#   guides(color=F)
-```
-
-We saves the best dimension
-
-```{r}
-rimov.best_E <- sapply(Rimov.phyto.simplex.list, function(df) {
-    df$E[which.max(df$rho)]
-})
-rimov.best_E
-```
-
-### S-maps of each species to identify nonlinear/linear time series
-
-Using the optimal embedding dimensions previously analysed, we apply the S-map method to identify whether the variables follow a linear dynamic (if the highest predictive skill $\rho$ occurs for $\theta = 0$) or a nonlinear dynamic (higher $\rho$ observed for $\theta > 0$).
-
-```{r}
-rimov.phyto.smaps <- lapply(vars, function(var) {
-    s_map(Phyto_std[[var]], E = rimov.best_E[var],
-          lib=c(1, floor(dim(Phyto_std)[1]/2) ),
-                              pred=c(floor(dim(Phyto_std)[1]/2)+1, dim(Phyto_std)[1])
-          )
-})
-names(rimov.phyto.smaps) <- names(Rimov.phyto.simplex.list)
-```
-
-```{r}
-par(mfrow = c(2, 2))
-for (var in names(rimov.phyto.smaps)) {
-    plot(rimov.phyto.smaps[[var]]$theta,
-         rimov.phyto.smaps[[var]]$rho, type = "l", xlab = "Nonlinearity (theta)", 
-        ylab = "Forecast Skill (rho)", main = var)
 }
+rm(j, out)
+
+# We saves the best dimension
+Rimov.Edim.best <- sapply(Rimov.Edim.list, function(df){ df[which.max(df$rho),]$E })
+maxE <- cbind.data.frame(E=Rimov.Edim.best, ID=key.table$long)
 ```
 
-## Convergent Cross Mapping
+-     Morpho-functional groups
+
+```{r, echo=FALSE}
+p1 <- bind_rows(Rimov.Edim.list[1:11]) %>%
+  ggplot( aes(E, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=4, scales="free_y")+
+  labs(x="Embedding Dimension (E)",y=expression(paste("Prediction Skill, ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F)
+
+p1+geom_vline( aes(xintercept=E), size=1, linetype=2, maxE[c(1:11),])
+```
+
+-     Environmental variables
+
+```{r, echo=FALSE}
+p2 <- bind_rows(Rimov.Edim.list[12:20]) %>%
+  ggplot( aes(E, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=3, scales="free_y")+
+  labs(x="Embedding Dimension (E)",y=expression(paste("Prediction Skill, ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F)
+
+p2+geom_vline( aes(xintercept=E), size=1, linetype=2, maxE[c(12:20),])
+```
+
+## Prediction decay
+
+how prediction skill changes as we increase the "time to prediction" argument
+For non linear systems, we expect t
+Demonstration 
+short-term prediction 
+
+```{r, echo=FALSE}
+Rimov.Tp.list <- list(); j=1
+for(i in 6:dim(Rimov_std)[2]){
+  out <- PredictInterval(dataFrame=Rimov_std, 
+                        lib=c(1, floor(dim(Rimov_std)[1]/2) ),
+                        pred=c(floor(dim(Rimov_std)[1]/2)+1, dim(Rimov_std)[1]),
+                        columns = colnames(Rimov_std)[i], target = colnames(Rimov_std)[i],
+                        E = maxE$E[j], showPlot=F) %>% 
+    mutate(ID = key.table$long[match(colnames(Rimov_std)[i],key.table$short)])
+  Rimov.Tp.list[[j]] <- out; j <- j+1
+  
+}
+rm(j,out)
+```
+
+-     Morpho-functional groups
+
+```{r, echo=FALSE}
+(q1 <- bind_rows(Rimov.Tp.list[1:11]) %>%
+  ggplot( aes(Tp, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=4, scales="free_y")+
+  labs(x="Time to prediction (Tp)",y=expression(paste("Prediction Skill ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F))
+```
+
+-     Environmental variables
+
+```{r, echo=FALSE}
+(q2 <- bind_rows(Rimov.Tp.list[12:20]) %>%
+  ggplot( aes(Tp, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=3, scales="free_y")+
+  labs(x="Time to prediction (Tp)",y=expression(paste("Prediction Skill ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F))
+```
+
+
+## S-maps, to identify nonlinear time series
+
+We now analyse the time series to test their nonlinearity using S-maps (short for "sequentially weighted global linear maps"). This method fits local linear maps to describe the dynamics. The nonlinear localisation parameter $\theta$ determines the degree to which individual points are weighted when fitting the local linear map. All points are equally weighed for $\theta = 0$, meaning that the local linear map is identical for all points in the reconstructed state-space, and that the S-map will identical to a global linear map (obtained for an autoregressive model). Oppositely, nearby points receive larger weights in the state-space for $\theta > 0$, and the local linear maps will differ in state-space to accommodate nonlinear behavior.
+
+Thus greater predictive skill values $\rho$ observed
+-   for $\theta = 0$ suggest that the S-map will be identical to a global linear map, i.e time series may be sampled from autoregressive red noise
+-   for $\theta > 0$ suggest nonlinear dynamics. Better forecasts are achieved when the local linear map can change depending on the location map $\theta$.
+
+Following, we build the S-maps for the different time series using the optimal embedding dimensions previously analysed.
+
+```{r, echo=FALSE}
+Rimov.Smaps.list <- list(); j=1
+for(i in 6:dim(Rimov_std)[2]){
+  out <- PredictNonlinear(dataFrame=Rimov_std, 
+                        lib=c(1, floor(dim(Rimov_std)[1]/2) ),
+                        pred=c(floor(dim(Rimov_std)[1]/2)+1, dim(Rimov_std)[1]),
+                        columns = colnames(Rimov_std)[i], target = colnames(Rimov_std)[i],
+                        E = maxE$E[j], showPlot=F) %>% 
+    mutate(ID = key.table$long[match(colnames(Rimov_std)[i],key.table$short)])
+  Rimov.Smaps.list[[j]] <- out; j <- j+1
+}
+rm(j,out)
+
+# We saves the best dimension
+Rimov.Theta.best <- sapply(Rimov.Smaps.list, function(df){ df[which.max(df$rho),]$Theta })
+maxTh <- cbind.data.frame(Theta=Rimov.Theta.best, ID=key.table$long)
+```
+
+-     Morpho-functional groups
+
+```{r, echo=FALSE}
+r1 <- bind_rows(Rimov.Smaps.list[1:11]) %>%
+  ggplot( aes(Theta, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=4, scales="free_y")+
+  labs(x=expression(paste("S-map localisation ", theta)),y=expression(paste("Prediction Skill  ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F)
+
+r1+geom_vline( aes(xintercept=Theta), size=1, linetype=2, maxTh[c(1:11),])
+```
+
+For all MFGs, best prediction skill is improved for positive $\theta$ across all outputs, suggesting nonlinear dynamics for these variables. Declines in forecast skill past the optimal $\theta$ (in dashed lines) indicate that local linear maps overfit to insufficient neighbors.
+
+-     Environmental variables
+
+```{r, echo=FALSE}
+r2 <- bind_rows(Rimov.Smaps.list[12:20]) %>%
+  ggplot( aes(Theta, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=3, scales="free_y")+
+  labs(x=expression(paste("S-map localisation ", theta)),y=expression(paste("Prediction Skill ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F)
+
+r2+geom_vline( aes(xintercept=Theta), size=1, linetype=2, maxTh[c(12:20),])
+```
+
+5 of our 9 selected drivers seem to be characterized by linear dynamics, which higher predictive skill observed at $\theta = 0$ for Altitude of the water surface, DIN, DOC, TN and TP.
+
+The remaining 4 drivers (Conductometry, DO, pH and Temperature) seems to be characterized by nonlinear dynamics.
+
+## Overall summary
+
+In overall, 
+
+the Simplex, prediction horizon and S-maps results suggest our approach is valid for:
+-
+
+but only for Conductometry, DO, pH and Temperature
+
+# Convergent Cross Mapping
 
 ```{r}
 n <- NROW(Phyto_std)
