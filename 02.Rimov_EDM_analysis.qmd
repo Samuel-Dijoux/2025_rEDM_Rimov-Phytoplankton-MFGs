@@ -71,16 +71,16 @@ print(sessionInfo())
 
 The following chunk defines the plot theme used across the analyses
 
-```{r}
-plot_theme <-   theme_minimal()+
-  theme(text=element_text(family="sans",size=12,color="black"),
-        legend.text = element_text(size=14),
-        axis.title=element_text(family="sans",size=14),
-        axis.text=element_text(family="sans",size=8),
-        strip.background = element_rect(colour="black"),
-        panel.border = element_rect(color="black",fill=NA))
-
-theme_set(plot_theme)
+```{r, eval=FALSE}
+# plot_theme <-   theme_minimal()+
+#   theme(text=element_text(family="sans",size=12,color="black"),
+#         legend.text = element_text(size=14),
+#         axis.title=element_text(family="sans",size=14),
+#         axis.text=element_text(family="sans",size=8),
+#         strip.background = element_rect(colour="black"),
+#         panel.border = element_rect(color="black",fill=NA))
+# 
+# theme_set(plot_theme)
 ```
 
 # Description of the Rimov reservoir and studied Variables
@@ -89,6 +89,8 @@ Brief state of art of the Rimov reservoir (missin for now, to be added).
 
 ```{r, echo=FALSE}
 load("Data/Rimov.datasets.RData")
+
+load("Data/Rimov.CCM.RData")
 ```
 
 ```{r, echo=FALSE}
@@ -103,16 +105,14 @@ key.table$col[6] <- rgb(0,0,0)
 ```
 
 ```{r, warning=FALSE, echo=FALSE}
-pd <- position_dodge(width=2)
-variables <- c( names(Phyto), names(Env))
-
+vars <- c( names(Phyto), names(Env))
 ts_list <- list()
 for(i in 1:length(variables)){
   yname <- ifelse(i<=11,
-                  paste0("Normalized Biovolume of MFG ", substr(variables[i], 5, 6)),
-                  paste0("Normalized Index Value of ", variables[i]))
+                  paste0("Normalized Biovolume of MFG ", substr(vars[i], 5, 6)),
+                  paste0("Normalized Index Value of ", vars[i]))
   
-  data <- Rimov_std %>% select(Date, variables[i])
+  data <- Rimov_std %>% select(Date, vars[i])
   colnames(data)[2] <- 'value'
   
   pp <- data %>%
@@ -123,6 +123,8 @@ for(i in 1:length(variables)){
   
   ts_list[[i]] = pp
 }
+
+rm(pp, yname, data)
 ```
 
 Our dataset is composed of 11 morpho-functional groups (MFGs) of phytoplankton and up to 9 environmental variables, all processed in the same time period. The 11 selected MFGs were selected as they contributed to at least $2.5 \%$ to the total phytoplanktonic biovolume in average over the time period.
@@ -162,7 +164,7 @@ for(i in 12:20){
 
 The main goal when using Empirical Dynamic Modelling is to reconstruct the behavior of system dynamics from our time series. The system state can be perceived as a point in a high-dimensional space, defined by fundamental state variables. As the system state change through time following a set of deterministic rules, it is possible to map a projection of the system state onto one of the coordinate axes.
 
-The time series can be perceived as sequential projections of the motion of an attractor. The reconstruction of the system attractor is possible using lags of a time series then substituting the lagged time series for unknown or unobserved variables. If sufficient lags are used, the reconstruction preserves essential mathematical properties of the original system (Taken's Theorem, (Takens 1981)): the reconstructed state will map one-to-one to the actual system state, and nearby points in the reconstructed will correspond to similar system states. Instead of using a complete set of state variables to represent the system state, we use an E-dimensional lagged-coordinate embedding: $ \vec{x_t} = < x_t, x_{t - \tau}, ..., x_{t - (E-1)\tau} >$.
+The time series can be perceived as sequential projections of the motion of an attractor. The reconstruction of the system attractor is possible using lags of a time series then substituting the lagged time series for unknown or unobserved variables. If sufficient lags are used, the reconstruction preserves essential mathematical properties of the original system (Taken's Theorem, (Takens 1981)): the reconstructed state will map one-to-one to the actual system state, and nearby points in the reconstructed will correspond to similar system states. Instead of using a complete set of state variables to represent the system state, we use an E-dimensional lagged-coordinate embedding: \$ \vec{x_t} = \< x_t, x\_{t - \tau}, ..., x\_{t - (E-1)\tau} \>\$.
 
 In the following, we perform a couple of analyses to verify that our time series are characterized by a deterministic and nonlinear behavior. This is done by using the the nearest neighbor forecasting method (or Simplex projection), which predict $x_{t+1}$ by finding the E+1 nearest neighbors of $x_t$ in the state space, and calculate the weighted average of the nearest neighbors' values at time $t+1$ from their Euclidean distance from $x_{t}$ at time $t$.
 
@@ -171,7 +173,9 @@ In the following, we perform a couple of analyses to verify that our time series
 We start by identifying the optimal embedded dimension $E$ that best *unfold* the dynamics of each variables. For each time series, we vary the embedded dimension $E$ and compare the estimated prediction skill $\rho$ (also called Pearson correlation coefficient), which measures the coefficient correlation between the predicted forecast and observed values. We then save the embedding dimension providing the highest prediction skill $\rho$.
 
 ```{r, echo=FALSE}
-Rimov.Edim.list <- list(); j=1
+Rimov.Edim.list <- list()
+j=1
+
 for(i in 6:dim(Rimov_std)[2]){
   out <- EmbedDimension(dataFrame=Rimov_std, 
                         lib=c(1, floor(dim(Rimov_std)[1]/2) ),
@@ -181,13 +185,13 @@ for(i in 6:dim(Rimov_std)[2]){
   Rimov.Edim.list[[j]] <- out; j <- j+1
   
 }
-rm(j, out)
-
 # We saves the best dimension
 Rimov.Edim.best <- sapply(Rimov.Edim.list, function(df){ df[which.max(df$rho),]$E })
 
 maxE <- cbind.data.frame(E=Rimov.Edim.best, ID=key.table$long)
 maxE <- maxE %>% mutate(short= key.table[which(maxE$ID==key.table$long),]$short )
+
+rm(i, j, out, Rimov.Edim.best)
 ```
 
 -   Morpho-functional groups
@@ -234,7 +238,7 @@ for(i in 6:dim(Rimov_std)[2]){
   Rimov.Tp.list[[j]] <- out; j <- j+1
   
 }
-rm(j,out)
+rm(i, j, out)
 ```
 
 -   Morpho-functional groups
@@ -248,6 +252,7 @@ rm(j,out)
   scale_x_continuous(breaks=seq(0,12,by=2))+
   guides(color=F))
 ```
+
 In overall most MFG time series show the expected decrease of prediction skill over time, characteristic of a deterministic behavior, but I have a doubt for the MFG 0, 1b and 2a. MFG 0 may have a purely stochastic dynamic, but the range of $\rho$ values is relatively small compared to other variables (between 0.05 and 0.15 vs. 0-0.8). This MFG might be characterized by a cyclic behavior.
 
 -   Environmental variables
@@ -262,7 +267,7 @@ In overall most MFG time series show the expected decrease of prediction skill o
   guides(color=F))
 ```
 
-All environmental time series show the expected decrease of prediction skill over time, characteristic of a deterministic behavior. 
+All environmental time series show the expected decrease of prediction skill over time, characteristic of a deterministic behavior.
 
 ## S-maps, to identify nonlinear time series
 
@@ -283,12 +288,12 @@ for(i in 6:dim(Rimov_std)[2]){
     mutate(ID = key.table$long[match(colnames(Rimov_std)[i],key.table$short)])
   Rimov.Smaps.list[[j]] <- out; j <- j+1
 }
-rm(j,out)
-
 # We saves the best dimension
 Rimov.Theta.best <- sapply(Rimov.Smaps.list, function(df){ df[which.max(df$rho),]$Theta })
 maxTh <- cbind.data.frame(Theta=Rimov.Theta.best, ID=key.table$long)
 maxTh <- maxTh %>% mutate(short= key.table[which(maxTh$ID==key.table$long),]$short )
+
+rm(i,j,out,Rimov.Theta.best)
 ```
 
 -   Morpho-functional groups
@@ -325,134 +330,165 @@ r2+geom_vline( aes(xintercept=Theta), size=1, linetype=2, maxTh[c(12:20),])
 
 The remaining 4 drivers (Conductometry, DO, pH and Temperature) seem to be characterized by nonlinear dynamics.
 
-# Causal inference and Convergent Cross Mapping
+# Causal inference through Convergent Cross Mapping
 
-two-part criterion for CCM to be a rigorous test of causality
-1. The cross map prediction skill is statistically significant (i.e. $\rho > 0$) when using the full time series as the library
-2. Cross map prediction demonstrates convergence, i.e. rho increases as more of the time series is used for the library and the reconstructed attractor becomes more dense
+In the previous section, we have established 
 
+two-part criterion for CCM to be a rigorous test of causality 1. The cross map prediction skill is statistically significant (i.e. $\rho > 0$) when using the full time series as the library 2. Cross map prediction demonstrates convergence, i.e. rho increases as more of the time series is used for the library and the reconstructed attractor becomes more dense
+
+
+
+Unilateral causal inference is established when a variable $x$ causes another $y$ while $y$ does not affect $x$.
+Cross-prediction is realized in the opposite way of a causal inference.
+The reconstructed states based of the affected variable $y$ can be used to cross predict the value of the causal variable $x$. Due to the causal link, the complete reconstruction of $y$ $M_y$ must include information of $x$.
+The cross-prediction from $x$ to $y$ will however fail because $x$ is independent to $y$, so a univariate reconstruction using only lags of $x$ is incomplete.
+
+example 
+causality between anchovy landings in california and newport pier sea surface
+i use as column is anchovy (the one we do the reconstructed map), and as target is the sst (the variable to identify traces of in the reconstructed map).
+E must be the one of the column (the one that best unfold the reconstruction)
+
+The CCM register 
+the ccm is organised as follow
+Influences are quantified from the target to the colu;ns
 We build a ccm across all time series using MFG and environmental variables as forcing variables (in column) and MFGs as predicted variables
 
-```{r, eval=T, echo=FALSE}
-n_row <- dim(Phyto_std)[2]
-n_col <- dim(Rimov_std)[2]-5
-
-col_names <- colnames(Rimov_std)[6:25]
-row_names <- colnames(Phyto_std)
-
-Rimov.Xmap.matrix <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-```
 
 We build 3 matrices storing the different CCM output to:
 
 -   test the significance of the cross map prediction skill: the first to store a bootstrapped p-value, measuring the probability that a given xmap is greater than zero (calculated as 1 minus the number of positive results for rho divided by the number of iterations)
 
--   test of convergence: a similar matrix storing a t-test value between library size 10 and 336 to see if the predictive skill is greater at large library size compared to at small library 
+-   test of convergence: a similar matrix storing a t-test value between library size 10 and 336 to see if the predictive skill is greater at large library size compared to at small library
 
 -   the third matrix is used as index of causality, if both previous tests have been passed
 
 ```{r}
-Rimov.p1.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-Rimov.p2.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-Rimov.ptot.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-```
+n_col <- dim(Rimov_std)[2]-5
+vars <- colnames(Rimov_std)[6:25]
 
-```{r, eval=F, echo=FALSE}
-for(i in 1:n_row) {
-  for(j in 1:n_col) {
-    if(i != j) {
-      # remember, we use the best embedding dimension for the target variable (the variable we're cross-mapping to, i.e. the putative forcing variable)
-      tempE=maxE[col_names[j]]$E
-      temp <- suppressWarnings(ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 2+i,target_column = 2+j,lib_sizes = c(10,500),num_samples=100,replace=T,silent=T,RNGseed = 41389))
-      
-     # mean rho at library size 500
-      rhomeans <- temp %>% ccm_means()
-      westend.xmap_mat[i,j] <- rhomeans$rho[rhomeans$lib_size==500]
-      
-      # first p-value (is cross map skill greater than zero? at library size 500)
-      p1 <- temp %>% filter(lib_size==500) %>% 
-        mutate(pos=ifelse(rho>0,1,0)) %>%
-        summarise(p=(1-sum(pos)/n()))
-      westend.p1.mat[i,j] <- as.numeric(p1)
-      
-      # second p-value (rho at lib-size 500 greater than rho at lib-size 10? By more than 0.1?)
-      p2 <- t.test(temp$rho[temp$lib_size==10],temp$rho[temp$lib_size==500])$p.value
-      if((rhomeans$rho[rhomeans$lib_size==500]-rhomeans$rho[rhomeans$lib_size==10])<0.1) p2 <- 1
-      westend.p2.mat[i,j] <- as.numeric(p2)
-      
-      # overall significance (both p1 and p2 signficant at alpha 0.05)
-      westend.ptot.mat[i,j] <- ifelse(p1<0.05 & p2<0.05,1,0)
-    }
+Rimov.p1.mat <- array(NA,dim=c(n_col,n_col),dimnames=list(vars,vars))
+Rimov.p2.mat <- array(NA,dim=c(n_col,n_col),dimnames=list(vars,vars))
+Rimov.ptot.mat <- array(NA,dim=c(n_col,n_col),dimnames=list(vars,vars))
+
+Rimov.Xmap.mat <- array(NA, dim=c(n_col,n_col), dimnames=list(vars,vars))
+Rimov.Xmap.data <- NULL
+Xmap.name <- NULL
+
+Rimov.Correlation.mat <- array(NA, dim=c(n_col,n_col), dimnames=list(vars,vars))
+
+for(ccm_from in 1:length(vars)){
+  for(ccm_to in 1:length(vars)){
+      if(vars[ccm_from] != vars[ccm_to]){
+        
+        ## I - Cross-mapping section ----
+        #Remember: for a Causal inference of X on Y: X ~> Y, we perform a Cross prediction: M_y ~> X (from the reconstructed map of Y to X)
+        # Cross validation quantify influences from the 'columns' variable (influenced variables) to the 'target' variable (the driving variable).
+        
+        # We select the optimal embedding dimension of the 'columns' variable
+        E_ccm <- maxE[which(maxE$short==vars[ccm_from]),]$E
+        
+        # CCM output: LibSize, rho values for vars[ccm_from] : vars[ccm_to] (causal effect of vars[ccm_to] on vars[ccm_from])
+        # Because CCM outputs differ according to the optimal embedding,
+        # I decided to disregard the reverse CCM test to perform it again with the optimal E  
+        CCM_out <- suppressWarnings(
+          CCM(dataFrame = Rimov_std, columns = vars[ccm_from], target = vars[ccm_to],
+              E = E_ccm, Tp=0, libSizes = paste(10, 328, 5, collapse=" "), sample=100, random=T, seed=34568) )
+        
+        ccm_name <- paste(vars[ccm_from], vars[ccm_to], sep=':')
+        CCM_out <- CCM_out %>% rename(rho = ccm_name) %>% select(LibSize, rho)
+        
+        # 0. We store the Xmap values ~ Library size for future plotting  
+        if( is.null(Rimov.Xmap.data$LibSize)){
+          Rimov.Xmap.data <- CCM_out %>% select(LibSize)
+          Xmap.name[1] <- colnames(Rimov.Xmap.data)}
+        
+        Rimov.Xmap.data <- Rimov.Xmap.data %>% cbind.data.frame(CCM_out$rho) 
+        Xmap.name <- append(Xmap.name, ccm_name)
+        colnames(Rimov.Xmap.data) <- Xmap.name
+        
+        Rimov.Xmap.mat[ccm_from, ccm_to] <- CCM_out[which(CCM_out$LibSize==CCM_out$LibSize[dim(CCM_out)[1]]),]$rho
+        
+        # 1. We calculate and store the bootstrapped p-value,
+        # probability that the Xmap is greater than 0
+        # If all rho values are negative, then the probability that the xmap is greater than 0 is null
+        pval1 <- CCM_out %>% filter(LibSize != CCM_out$LibSize[dim(CCM_out)[1]] ) %>%
+           mutate(pos = ifelse(rho > 0,1,0)) %>%
+           summarise(p=(1-sum(pos)/n())) 
+         Rimov.p1.mat[ccm_from, ccm_to] <- as.numeric(pval1)
+        # 2. Quick comparison of averaged rho values at small and large library sizes to denote whether the predictive skill increase with library size or not. These comparisons are further analysed graphically
+        L1 <- CCM_out %>% filter(LibSize < CCM_out$LibSize[1]+30 ) %>% select(rho)
+        L2 <- CCM_out %>% filter(LibSize > CCM_out$LibSize[dim(CCM_out)[1]]-30 ) %>% select(rho)
+        pval2 <- t.test(L1$rho, L2$rho)$p.value
+        Rimov.p2.mat[ccm_from, ccm_to] <- as.numeric(pval2)
+        # 3. Overall significance of the CCM from both tests (both p1 and p2 significant at alpha 0.05)
+        Rimov.ptot.mat[ccm_from, ccm_to] <- ifelse(as.numeric(pval1) < 0.05 & as.numeric(pval2) < 0.05, 1, 0)
+         
+        ## II - Cross-correlation section ----
+        ccf_out <- ccf(Rimov_std[ ,ccm_from+5], Rimov_std[ ,ccm_to+5], type = "correlation", lag.max = 6, plot = FALSE)$acf
+        Rimov.Correlation.mat[ccm_from, ccm_to] <- max(abs(ccf_out))
+      }else{
+        next
+      }
   }
 }
+save(Rimov.Xmap.mat, Rimov.Xmap.data,
+     Rimov.p1.mat, Rimov.p2.mat, Rimov.ptot.mat,
+     Xmap.name, Rimov.Correlation.mat, file="Data/Rimov.CCM.RData")
+
+rm(n_col, vars, ccm_from, ccm_to, CCM_out, ccm_name, E_ccm, 
+   pval1, pval2, L1, L2, ccf_out)
 ```
 
 
-```{r, eval=FALSE, echo=FALSE}
-var_pairs <- combn(vars, 2)
-E_pairs <- rep(maxE$E, each=(length(vars)-1)/2 )
+Creating a list to easily plot the Xmaps
+```{r}
+Rimov.Xmap.list <- c()
+n_col <- dim(Rimov_std)[2]-5
+vars <- colnames(Rimov_std)[6:25]
 
-length(E_pairs)
-dim(var_pairs)
-
-(20*19)/2
-
-
-n <- dim(Rimov_std) [1]
-libSizes = paste(10, n, 5, collapse= " " )
-
-ccm_matrix = array(NA, dim = c(length(vars), length(vars)), dimnames = list(vars,
-vars))
-
-for (i in 1:ncol(var_pairs)) {
-  ccm_out = CCM(dataFrame = Rimov_std,
-                columns = var_pairs[1, i], target = var_pairs[2, i],
-                libSizes = libSizes, Tp = 0,
-                E = maxE$E[which(maxE$ID=var_pairs[1, i]),], sample = 100)
-  
-  outVars = names(ccm_out)
-  var_out = unlist(strsplit(outVars[2], ":"))
-  ccm_matrix[var_out[2], var_out[1]] = ccm_out[1, 2]
-  var_out = unlist(strsplit(outVars[3], ":"))
-  ccm_matrix[var_out[2], var_out[1]] = ccm_out[1, 3]
+for(ccm_from in vars){
+  vars2 <- vars[! vars %in% ccm_from]
+  for(ccm_to in vars2){
+    df1 <- Rimov.Xmap.data %>% select(LibSize, paste(ccm_from, ccm_to, sep=':')) %>% 
+      mutate(Xmap = paste(ccm_from, ccm_to, sep=':')) %>% rename( rho = paste(ccm_from, ccm_to, sep=':'))
+    df2 <- Rimov.Xmap.data %>% select(LibSize, paste(ccm_to, ccm_from, sep=':')) %>%
+      mutate(Xmap = paste(ccm_to, ccm_from, sep=':')) %>% rename( rho = paste(ccm_to, ccm_from, sep=':'))
+    
+    df <- bind_rows(df1, df2) %>% mutate(ID = paste(ccm_from, ccm_to, sep=' & '))
+    Rimov.Xmap.list[[i]] <- df
+    i <- i+1
   }
-
-```
-
-```{r, eval=FALSE, echo=FALSE}
-vars <- names(Rimov_std)[6:25]
-var_pairs <- combn(vars, 2)
-E_pairs <- rep(maxE$E, each=length(vars)-1)
-
-n <- dim(Rimov_std) [1]
-libSizes = paste(10, n, 5, collapse= " " )
-
-
-CCM_rho_matrix <- matrix(NA, nrow = length(vars), ncol = length(vars),
-                         dimnames = list(vars, vars))
-
-e = 1
-for (CCM_from in vars) {
-    for (CCM_to in vars[vars != CCM_from]) {
-        out_ccm <- CCM(dataFrame = Rimov_std, E = maxE$E[e],
-                       column = CCM_from, target = CCM_to,
-                       libSizes = libSizes, showPlot = F)
-        CCM_rho_matrix[CCM_from, CCM_to] <- out_ccm$rho
-    }
-  e = e+1
 }
 
-ccm_rho_matrix2
 ```
 
-```{r, eval=FALSE, echo=FALSE}
-for (ccm_from in vars) {
-  for (ccm_to in vars[vars != ccm_from]) {
-    ccm_out = CCM(dataFrame = Thrips, columns = var_pairs[1, i], target = var_pairs[2,
-i], libSizes = libSize, Tp = 0, E = E, sample = 100)
-    }
-}
+```{r}
+library(reshape2)
+
+ggplot(data=df,
+       aes(x=LibSize, y=rho, by=Xmap)) +
+    geom_line()
+
 ```
+
+
+```{r, echo=FALSE, warning=FALSE}
+p <- bind_rows(Rimov.Edim.list[1:11]) %>%
+  ggplot( aes(E, rho, colour = ID) )+
+  geom_line(size=2)+
+  facet_wrap(~ID, nrow=3, ncol=4, scales="free_y")+
+  labs(x="Library Size (L)",y=expression(paste("Prediction Skill, ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  guides(color=F)
+
+p+geom_vline( aes(xintercept=E), size=1, linetype=2, maxE[c(1:11),])
+```
+
+Next steps
+
+Plot the convergent cross mapping matrix
+Plot the cross-correlation matrix
+Plot the CCMs across library size with
 
 ## Acknowledgement
 
